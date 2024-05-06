@@ -40,6 +40,10 @@ void Server::runServer() {
     openListener();
     std::cout << "Server started on port: " << _port << "\n";
 
+    // TEMPORARY: CREATE TESTING CHAT ROOMS
+    Rooms::createRoom(1);
+    Rooms::createRoom(20);
+
     // infinite loop
     while(_is_running) {
         SOCKET client_socket = SOCKET_ERROR;
@@ -90,11 +94,13 @@ SOCKET Server::acceptConnection() {
     int client_size = sizeof(client);
     SOCKET client_socket;
     check(client_socket = accept(_listener_socket, (sockaddr *) &client, &client_size));
+    std::cout << "Client connected.\n";
     return client_socket;
 }
 
 
-// Main function for handling and estabilishing connections
+// Handling connections and requests ==================================
+// ====================================================================
 void Server::handleConnection(SOCKET client_socket) {
     char recvbuf[_bufflen];
     int bytes_received;
@@ -102,14 +108,14 @@ void Server::handleConnection(SOCKET client_socket) {
     while (true) {
         ZeroMemory(recvbuf, _bufflen);
         bytes_received = recv(client_socket, recvbuf, _bufflen, 0);
+
         if (bytes_received == 0) {
             std::cout << "Client disconnected.\n";
-            break;
         } else if (bytes_received < 0) {
-            std::cout << "Error in receieving bytes.\n";
+            std::cout << "Error in receiving bytes.\n";
             break;
         }
-        std::string session_response = processRequest(recvbuf);
+        std::string session_response = processRequest(recvbuf, client_socket);
         std::cout << "Received ( " << bytes_received << "bytes ) with message: \"" << recvbuf << "\"\n";
         send(client_socket, session_response.c_str(), session_response.length(), 0);
 
@@ -123,6 +129,15 @@ void Server::handleConnection(SOCKET client_socket) {
     closesocket(client_socket);
 }
 
+// handle message sending
+void Server::handleChatMessage(const std::string& token, const std::string& message) {
+    for (const auto& [key, value] : SessionManager::sessions) {
+        if(token != key && value.chat_id == SessionManager::sessions[token].chat_id) {
+            std::string data = SessionManager::sessions[token].username + " " + message;
+            send(*value.client_socket, data.c_str(), data.length(), 0);
+        }
+    }
+}
 
 // Utility functions =================================================
 // ===================================================================
@@ -148,23 +163,47 @@ int Server::check(SOCKET socket) {
 // Session management ================================================
 // ===================================================================
 // session processing
-std::string Server::processRequest(const std::string &request) {
+std::string Server::processRequest(const std::string &request, SOCKET client_socket) {
+    std::istringstream iss(request);
+    std::vector<std::string> requests;
+    std::string current_request;
+
+    while (iss >> current_request) {
+        requests.push_back(current_request);
+    }
+
 
     // Log In
-    if (request.substr(0, 6) == "LOGIN ") {
+    if (requests[0] == "LOGIN") {
         // LOGIN <token> <requestID> <data>
-        std::string username = request.substr(6);
-        std::string token = SessionManager::startSession(username);
+        std::string username = requests[1];
+        std::string token = SessionManager::startSession(username, client_socket);
         return "LOGIN_SUCCESS " + token;
 
-    } else if (request.substr(0, 11) == "VERIFYTOKEN") {
-        std::string token = request.substr(11);
+    } else if (requests[0] == "VERIFYTOKEN") {
+        std::string token = requests[1];
 
         if (SessionManager::verifySessionToken(token)) {
+            if (requests[2] == "MESSAGE") {
+                std::string message;
+                std::for_each(requests.begin() + 3, requests.end(), [&](const std::string& req) {
+                    message.append(req + " ");
+                });
+                handleChatMessage(token, message);
+            } else if (requests[2] == "JOIN_ROOM") {
+                if(Rooms::enterRoom(SessionManager::sessions[token].username, requests[3])) {
+                    SessionManager::sessions[token].chat_id = requests[3];
+                }
+            } else if (requests[2] == "EXIT_ROOM") {
+                Rooms::exitRoom(SessionManager::sessions[token].username, requests[3]);
+                SessionManager::sessions[token].chat_id = "";
+            }
             return "TOKEN_VALID";
         } else {
             return "TOKEN_INVALID";
         }
+    } else if (requests[0] == "GET_ROOMS") {
+        return "GET_ROOMS" + Rooms::getAllRoomId();
     } else {
         return "INVALID_REQUEST";
     }

@@ -12,9 +12,12 @@
 #include <map>
 #include <random>
 #include <thread>
+#include <sstream>
+#include <algorithm>
 
 // Internal libs
 #include "SessionManager.h"
+#include "Rooms.h"
 
 // Defaults
 #define DEFAULT_PORT "27015"
@@ -37,7 +40,7 @@ private:
     SOCKET _listener_socket{}; // listener socket
 
     // session handling
-    static std::string processRequest(const std::string& request);
+    static std::string processRequest(const std::string& request, SOCKET client_socket);
 
 
 public:
@@ -60,6 +63,9 @@ public:
     // handle client connection
     void handleConnection(SOCKET client_socket);
     SOCKET acceptConnection();
+
+    // handle message sending
+    static void handleChatMessage(const std::string& token, const std::string& message);
 
     // handle common winsocket2 errors
     int check(int i);

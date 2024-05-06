@@ -21,9 +21,7 @@ include_directories(${INCLUDES})
 
 file(GLOB SOURCES "${PROJECT_SOURCE_DIR}/src/*.cpp")
 
-add_executable(${PROJECT_NAME} Server.cpp ${SOURCES}
-        src/Settings.cpp
-        src/SessionManager.cpp)
+add_executable(${PROJECT_NAME} Server.cpp ${SOURCES})
 if(WIN32)
     target_link_libraries(${PROJECT_NAME} Ws2_32)
 endif()
